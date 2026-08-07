@@ -1,0 +1,16 @@
+# Python virtualenv and caches
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/caregate.db
+
+# Frontend dependencies and builds
+frontend/node_modules/
+frontend/dist/
+
+# Local credentials
+.env
+.env.*
+*.local
+.agents/
+.gemini/

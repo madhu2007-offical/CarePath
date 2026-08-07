@@ -1,0 +1,51 @@
+Patient ID,Age,Gender,Ethnicity,Marital Status,Education Level,OCD Diagnosis Date,Duration of Symptoms (months),Previous Diagnoses,Family History of OCD,Obsession Type,Compulsion Type,Y-BOCS Score (Obsessions),Y-BOCS Score (Compulsions),Depression Diagnosis,Anxiety Diagnosis,Medications
+1018,32,Female,African,Single,Some College,2016-07-15,203,MDD,No,Harm-related,Checking,17,10,Yes,Yes,SNRI
+2406,69,Male,African,Divorced,Some College,2017-04-28,180,None,Yes,Harm-related,Washing,21,25,Yes,Yes,SSRI
+1188,57,Male,Hispanic,Divorced,College Degree,2018-02-02,173,MDD,No,Contamination,Checking,3,4,No,No,Benzodiazepine
+6200,27,Female,Hispanic,Married,College Degree,2014-08-25,126,PTSD,Yes,Symmetry,Washing,14,28,Yes,Yes,SSRI
+5824,56,Female,Hispanic,Married,High School,2022-02-20,168,PTSD,Yes,Hoarding,Ordering,39,18,No,No,None
+6946,32,Female,Asian,Married,College Degree,2016-06-25,46,GAD,No,Hoarding,Ordering,26,11,Yes,Yes,SSRI
+9861,38,Female,Hispanic,Single,College Degree,2017-03-13,110,MDD,No,Contamination,Praying,12,16,Yes,No,SNRI
+8396,57,Male,Hispanic,Divorced,College Degree,2015-08-25,197,PTSD,No,Religious,Ordering,31,4,Yes,No,SSRI
+9039,36,Male,Hispanic,Divorced,College Degree,2016-09-19,84,None,No,Harm-related,Praying,37,24,No,Yes,None
+1580,72,Female,Hispanic,Divorced,Graduate Degree,2014-07-13,47,GAD,Yes,Contamination,Ordering,28,36,Yes,Yes,Benzodiazepine
+9672,21,Female,African,Married,College Degree,2014-12-18,95,GAD,Yes,Harm-related,Checking,40,26,Yes,No,None
+7905,73,Female,Hispanic,Divorced,High School,2017-01-13,233,GAD,No,Religious,Counting,4,16,Yes,Yes,Benzodiazepine
+6237,23,Female,Hispanic,Married,High School,2015-06-09,48,Panic Disorder,No,Contamination,Praying,14,27,Yes,Yes,None
+4456,68,Female,Caucasian,Single,Some College,2019-04-13,126,MDD,No,Contamination,Counting,10,39,Yes,No,SSRI
+9678,48,Female,Caucasian,Divorced,High School,2020-08-24,141,MDD,Yes,Harm-related,Washing,23,39,No,No,SNRI
+8070,29,Male,Hispanic,Married,College Degree,2022-08-24,108,PTSD,Yes,Symmetry,Praying,17,25,No,Yes,SSRI
+5003,25,Male,African,Married,College Degree,2021-01-20,206,Panic Disorder,Yes,Religious,Counting,7,21,Yes,No,SSRI
+7251,55,Female,African,Divorced,High School,2021-01-23,147,None,Yes,Religious,Checking,38,20,No,Yes,Benzodiazepine
+8271,50,Female,African,Single,Some College,2017-11-04,62,None,Yes,Hoarding,Washing,22,22,No,No,None
+2637,66,Female,Asian,Divorced,College Degree,2018-08-14,73,Panic Disorder,No,Harm-related,Washing,0,12,No,Yes,SNRI
+6778,27,Male,Asian,Single,Graduate Degree,2015-11-06,220,PTSD,Yes,Religious,Ordering,30,4,Yes,Yes,Benzodiazepine
+9354,62,Male,Caucasian,Single,Graduate Degree,2022-09-27,89,PTSD,Yes,Religious,Counting,1,40,Yes,No,SNRI
+1022,28,Male,Caucasian,Single,College Degree,2016-08-23,208,PTSD,No,Contamination,Checking,32,16,No,No,SNRI
+8818,43,Male,Caucasian,Married,Graduate Degree,2022-03-04,39,GAD,No,Religious,Washing,0,18,Yes,Yes,Benzodiazepine
+3552,21,Female,Caucasian,Single,Some College,2016-04-22,14,Panic Disorder,No,Harm-related,Praying,29,5,Yes,No,Benzodiazepine
+4560,55,Female,Asian,Divorced,Graduate Degree,2017-09-11,192,MDD,No,Religious,Washing,19,25,Yes,Yes,SSRI
+5366,47,Male,Caucasian,Single,Some College,2016-12-14,134,GAD,No,Symmetry,Washing,9,36,Yes,No,None
+8106,74,Male,Asian,Divorced,College Degree,2018-09-09,42,GAD,Yes,Hoarding,Checking,4,8,Yes,No,None
+1213,60,Male,Asian,Divorced,College Degree,2014-06-26,226,MDD,No,Harm-related,Praying,18,0,Yes,No,SSRI
+7992,28,Male,Hispanic,Divorced,Graduate Degree,2019-10-15,151,GAD,Yes,Contamination,Counting,31,13,Yes,No,Benzodiazepine
+9536,22,Female,Asian,Divorced,College Degree,2021-01-11,90,Panic Disorder,No,Hoarding,Praying,20,20,No,Yes,Benzodiazepine
+6831,28,Male,Caucasian,Married,Some College,2021-10-19,58,Panic Disorder,Yes,Religious,Checking,27,4,No,No,None
+4055,24,Male,African,Divorced,Some College,2017-01-15,58,Panic Disorder,Yes,Harm-related,Praying,34,0,No,Yes,Benzodiazepine
+7299,48,Male,Hispanic,Married,Some College,2021-02-27,193,None,Yes,Religious,Counting,23,12,Yes,Yes,SNRI
+2560,56,Male,Caucasian,Married,Some College,2020-03-19,49,None,Yes,Harm-related,Counting,20,22,Yes,No,None
+2995,73,Female,Caucasian,Married,Graduate Degree,2017-12-27,112,Panic Disorder,No,Religious,Washing,17,38,Yes,No,SNRI
+1356,70,Female,Caucasian,Married,Graduate Degree,2017-04-04,141,Panic Disorder,Yes,Contamination,Praying,37,25,No,Yes,None
+2955,33,Male,Hispanic,Divorced,High School,2019-05-22,160,Panic Disorder,Yes,Symmetry,Praying,38,21,No,No,None
+7042,41,Female,Asian,Married,High School,2014-12-30,134,None,No,Hoarding,Washing,8,31,No,No,Benzodiazepine
+5868,58,Female,Caucasian,Married,High School,2019-12-23,160,PTSD,Yes,Religious,Washing,36,4,Yes,No,SSRI
+9468,65,Female,Hispanic,Married,Graduate Degree,2018-11-01,134,PTSD,Yes,Symmetry,Washing,3,4,Yes,No,SSRI
+1660,58,Male,Caucasian,Married,Some College,2020-08-15,140,GAD,Yes,Harm-related,Counting,17,34,No,No,Benzodiazepine
+5148,49,Female,Asian,Divorced,High School,2020-07-13,193,MDD,No,Hoarding,Washing,9,24,No,No,Benzodiazepine
+7919,69,Female,African,Divorced,Graduate Degree,2019-01-28,217,Panic Disorder,No,Hoarding,Washing,28,37,No,Yes,None
+7493,37,Male,Caucasian,Divorced,Graduate Degree,2020-01-28,34,MDD,Yes,Contamination,Washing,37,40,No,No,SSRI
+9527,22,Male,African,Single,Graduate Degree,2016-02-25,207,None,Yes,Harm-related,Ordering,16,10,Yes,No,SSRI
+2164,63,Male,Hispanic,Married,Some College,2016-01-23,154,MDD,No,Contamination,Washing,13,15,No,No,Benzodiazepine
+5092,46,Female,Caucasian,Married,Some College,2016-08-25,11,MDD,No,Religious,Washing,40,1,No,No,Benzodiazepine
+2169,31,Female,African,Single,College Degree,2020-03-29,59,MDD,Yes,Hoarding,Washing,40,32,No,Yes,None
+9633,72,Male,African,Divorced,Graduate Degree,2014-07-25,22,MDD,Yes,Religious,Washing,28,5,No,No,SNRI
