@@ -65,6 +65,7 @@ def init_db():
             validation_results TEXT,
             letter_text TEXT,
             next_steps TEXT,
+            audit_trail TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)

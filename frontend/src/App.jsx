@@ -12,8 +12,10 @@ export default function App() {
   // Workspace State
   const [selectedTreatment, setSelectedTreatment] = useState('');
   const [validationResults, setValidationResults] = useState(null);
+  const [extractedPatientData, setExtractedPatientData] = useState(null);
   const [generatedLetter, setGeneratedLetter] = useState('');
   const [nextSteps, setNextSteps] = useState([]);
+  const [auditTrail, setAuditTrail] = useState(null);
   const [loading, setLoading] = useState(false);
   const [validating, setValidating] = useState(false);
   
@@ -99,8 +101,10 @@ export default function App() {
   const handleSelectPatient = (patient) => {
     setSelectedPatient(patient);
     setValidationResults(null);
+    setExtractedPatientData(null);
     setGeneratedLetter('');
     setNextSteps([]);
+    setAuditTrail(null);
   };
 
   // Run policy validation (deterministic backend logic)
@@ -108,8 +112,10 @@ export default function App() {
     if (!selectedPatient || !selectedTreatment) return;
     setValidating(true);
     setValidationResults(null);
+    setExtractedPatientData(null);
     setGeneratedLetter('');
     setNextSteps([]);
+    setAuditTrail(null);
     try {
       const res = await fetch(`${API_BASE}/patients/${selectedPatient.id}/validate`, {
         method: 'POST',
@@ -118,7 +124,8 @@ export default function App() {
       });
       if (res.ok) {
         const data = await res.json();
-        setValidationResults(data);
+        setValidationResults(data.validation_results);
+        setExtractedPatientData(data.patient_data);
       } else {
         alert("Failed to run policy validation.");
       }
@@ -132,7 +139,7 @@ export default function App() {
 
   // Generate Letter via Gemini API
   const handleGenerateLetter = async () => {
-    if (!selectedPatient || !validationResults) return;
+    if (!selectedPatient || !validationResults || !extractedPatientData) return;
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/patients/${selectedPatient.id}/generate-letter`, {
@@ -140,6 +147,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           treatment: selectedTreatment,
+          patient_data: extractedPatientData,
           validation_results: validationResults
         })
       });
@@ -147,6 +155,7 @@ export default function App() {
         const data = await res.json();
         setGeneratedLetter(data.letter);
         setNextSteps(data.next_steps);
+        setAuditTrail(data.audit_trail);
         // Refresh previous requests log
         fetchRequests();
       } else {
@@ -305,8 +314,18 @@ export default function App() {
     setSelectedPatient(associatedPatient);
     setSelectedTreatment(req.treatment);
     setValidationResults(req.validation_results);
+    setExtractedPatientData(req.validation_results.patient_data || {
+      patient_id: req.patient_id,
+      name: req.patient_name,
+      insurance_plan: associatedPatient.insurance_plan,
+      diagnosis: associatedPatient.diagnosis,
+      medications: [associatedPatient.medications],
+      referral_status: associatedPatient.referral_status.toLowerCase(),
+      lab_reports: associatedPatient.lab_reports.toLowerCase()
+    });
     setGeneratedLetter(req.letter_text);
     setNextSteps(req.next_steps);
+    setAuditTrail(req.audit_trail);
   };
 
   // Search filter
@@ -544,33 +563,80 @@ export default function App() {
               <div>
                 {/* 1. Checklist Output */}
                 {validationResults && (
-                  <div className="card">
-                    <h3 className="card-title">Deterministic Policy Checklist</h3>
-                    <div style={{ marginBottom: '1rem', border: '1px solid var(--border)', borderRadius: '0.375rem' }}>
-                      {validationResults.checklist.map((item, idx) => (
-                        <div key={idx} className="checklist-item">
-                          <span className={`checklist-icon ${item.status ? 'pass' : 'fail'}`}>
-                            {item.status ? '✅' : '❌'}
-                          </span>
-                          <span style={{ fontWeight: '500' }}>{item.label}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem' }}>
-                      <div>
-                        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: '600' }}>READINESS ESTIMATE</span>
-                        <div style={{ fontSize: '1.8rem', fontWeight: '700', color: validationResults.readiness_score === 100 ? 'var(--success)' : 'var(--warning)' }}>
-                          {validationResults.readiness_score}%
+                  <div>
+                    {/* Extraction Agent Output Card */}
+                    {extractedPatientData && (
+                      <div className="card" style={{ borderLeft: '4px solid var(--primary)' }}>
+                        <h4 className="card-title" style={{ margin: '0 0 0.5rem 0', fontSize: '1rem' }}>
+                          <span>Extraction Agent Structured Profile</span>
+                          <span className="badge badge-ready" style={{ fontSize: '0.65rem' }}>Extraction Agent</span>
+                        </h4>
+                        <p style={{ margin: '0 0 1rem 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                          Patient data parsed from clinical notes:
+                        </p>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', fontSize: '0.85rem' }}>
+                          <div>
+                            <span style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--text-muted)', display: 'block' }}>EXTRACTED DIAGNOSIS</span>
+                            <strong>{extractedPatientData.diagnosis}</strong> {extractedPatientData.diagnosis_code_icd10 && <span style={{ color: 'var(--primary-dark)' }}>({extractedPatientData.diagnosis_code_icd10})</span>}
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--text-muted)', display: 'block' }}>INSURANCE PLAN</span>
+                            <strong>{extractedPatientData.insurance_plan}</strong>
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--text-muted)', display: 'block' }}>ACTIVE MEDICATIONS</span>
+                            <span style={{ fontFamily: 'monospace', fontWeight: '500' }}>
+                              {Array.isArray(extractedPatientData.medications) ? extractedPatientData.medications.join(', ') : extractedPatientData.medications}
+                            </span>
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--text-muted)', display: 'block' }}>STEP-THERAPY CRITERIA</span>
+                            <span style={{ fontFamily: 'monospace', fontWeight: '500' }}>
+                              {Array.isArray(extractedPatientData.prior_therapies_tried) ? extractedPatientData.prior_therapies_tried.join(', ') : extractedPatientData.prior_therapies_tried || 'None'}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                      <button 
-                        className="btn btn-primary" 
-                        onClick={handleGenerateLetter} 
-                        disabled={loading || validationResults.checklist.filter(c => c.field !== 'step_therapy' && c.status).length === 0}
-                      >
-                        {loading ? 'Consulting Gemini API...' : 'Generate Prior Authorization Letter'}
-                      </button>
+                    )}
+
+                    <div className="card">
+                      <h3 className="card-title">
+                        <span>Criteria-Matching Payer Checklist</span>
+                        <span className="badge badge-missing" style={{ fontSize: '0.65rem', backgroundColor: '#f1f5f9', color: '#475569' }}>Matching Agent</span>
+                      </h3>
+                      
+                      {validationResults.escalate_to_human && (
+                        <div className="banner banner-warning" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', marginBottom: '1rem' }}>
+                          ⚠️ <strong>Matching Flagged:</strong> {validationResults.escalation_reason}
+                        </div>
+                      )}
+
+                      <div style={{ marginBottom: '1rem', border: '1px solid var(--border)', borderRadius: '0.375rem' }}>
+                        {validationResults.checklist.map((item, idx) => (
+                          <div key={idx} className="checklist-item">
+                            <span className={`checklist-icon ${item.status ? 'pass' : 'fail'}`}>
+                              {item.status ? '✅' : '❌'}
+                            </span>
+                            <span style={{ fontWeight: '500' }}>{item.label}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem' }}>
+                        <div>
+                          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: '600' }}>READINESS ESTIMATE</span>
+                          <div style={{ fontSize: '1.8rem', fontWeight: '700', color: validationResults.readiness_score === 100 ? 'var(--success)' : 'var(--warning)' }}>
+                            {validationResults.readiness_score}%
+                          </div>
+                        </div>
+                        <button 
+                          className="btn btn-primary" 
+                          onClick={handleGenerateLetter} 
+                          disabled={loading || validationResults.checklist.filter(c => c.field !== 'step_therapy' && c.status).length === 0}
+                        >
+                          {loading ? 'Consulting Gemini API...' : 'Generate Prior Authorization Letter'}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -646,6 +712,58 @@ export default function App() {
                         </div>
                       )}
                     </div>
+
+                    {/* Audit Trail Card */}
+                    {auditTrail && (
+                      <div className="card" style={{ borderLeft: auditTrail.escalated ? '4px solid var(--warning)' : '4px solid var(--success)' }}>
+                        <h3 className="card-title">
+                          <span>Case Audit Trail Log</span>
+                          <span className={`badge ${auditTrail.escalated ? 'badge-missing' : 'badge-ready'}`} style={{ fontSize: '0.65rem' }}>
+                            {auditTrail.escalated ? 'Escalated to Payer Review' : 'Passed Local Audit'}
+                          </span>
+                        </h3>
+                        
+                        {auditTrail.escalated ? (
+                          <div className="banner banner-warning" style={{ fontSize: '0.85rem', padding: '0.5rem 1rem', marginBottom: '1rem' }}>
+                            <strong>⚠️ Flagged:</strong> {auditTrail.escalation_reason}
+                          </div>
+                        ) : (
+                          <div className="banner banner-success" style={{ fontSize: '0.85rem', padding: '0.5rem 1rem', marginBottom: '1rem' }}>
+                            <strong>✅ Verified:</strong> Case aligns with insurance policy guidelines.
+                          </div>
+                        )}
+
+                        <div className="patient-info-row" style={{ padding: '0.50rem 0' }}>
+                          <div className="patient-info-label" style={{ fontSize: '0.8rem', width: '25%' }}>Audit Summary</div>
+                          <div className="patient-info-value" style={{ fontSize: '0.85rem', width: '75%' }}>{auditTrail.case_summary}</div>
+                        </div>
+
+                        <div className="patient-info-row" style={{ padding: '0.50rem 0' }}>
+                          <div className="patient-info-label" style={{ fontSize: '0.8rem', width: '25%' }}>Confidence Score</div>
+                          <div className="patient-info-value" style={{ fontSize: '0.85rem', width: '75%', fontWeight: '700', color: auditTrail.confidence_score >= 70 ? 'var(--success)' : 'var(--danger)' }}>
+                            {auditTrail.confidence_score}%
+                          </div>
+                        </div>
+
+                        <div className="patient-info-row" style={{ padding: '0.50rem 0' }}>
+                          <div className="patient-info-label" style={{ fontSize: '0.8rem', width: '25%' }}>Trace Logs</div>
+                          <div className="patient-info-value" style={{ fontSize: '0.85rem', width: '75%' }}>
+                            {auditTrail.agents_involved.map((agent, i) => (
+                              <span key={i} className="badge" style={{ backgroundColor: '#f1f5f9', color: '#475569', marginRight: '0.25rem', fontSize: '0.65rem', padding: '0.15rem 0.4rem', textTransform: 'capitalize' }}>
+                                {agent} Agent
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="patient-info-row" style={{ padding: '0.50rem 0', borderBottom: 'none' }}>
+                          <div className="patient-info-label" style={{ fontSize: '0.8rem', width: '25%' }}>Timestamp</div>
+                          <div className="patient-info-value" style={{ fontSize: '0.8rem', color: 'var(--text-muted)', width: '75%' }}>
+                            {new Date(auditTrail.timestamp).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Pre-formatted Letter Text */}
                     <div className="card">

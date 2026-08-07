@@ -11,6 +11,7 @@ import sqlite3
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 
 import database
+import agents
 
 app = FastAPI(title="CareGate API", version="1.0.0")
 
@@ -34,6 +35,7 @@ class ValidationRequest(BaseModel):
 
 class LetterRequest(BaseModel):
     treatment: str
+    patient_data: Dict[str, Any]
     validation_results: Dict[str, Any]
 
 class PatientCreate(BaseModel):
@@ -135,7 +137,7 @@ def get_policy_rules():
 
 @app.post("/api/patients/{id}/validate")
 def validate_policy(id: int, req: ValidationRequest):
-    """Run deterministic policy validation against patient record."""
+    """Run agentic extraction and criteria matching validation."""
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM patients WHERE id = ?", (id,))
@@ -152,87 +154,98 @@ def validate_policy(id: int, req: ValidationRequest):
     
     patient = dict(patient)
     rule = dict(rule)
-    required_fields = json.loads(rule["required_fields"])
+    rule["required_fields"] = json.loads(rule["required_fields"])
     
-    # Run deterministic checks
-    checklist = []
-    present_count = 0
+    # 1. Construct raw text record for Extraction Agent
+    raw_notes = f"""
+    Patient ID: {patient['patient_id']}
+    Demographics: {patient['name']}, Age {patient['age']}
+    Diagnosis Notes: {patient['diagnosis']}
+    Active Medications: {patient['medications']}
+    Referral Letter Status: {patient['referral_status']}
+    Lab Reports Available: {patient['lab_reports']}
+    Insurance Plan: {patient['insurance_plan']}
+    Requested Treatment: {req.treatment}
+    """
     
-    # 1. Diagnosis Check
-    diag_present = bool(patient["diagnosis"] and patient["diagnosis"].strip())
-    checklist.append({
-        "field": "diagnosis",
-        "label": "Diagnosis Present",
-        "status": diag_present
-    })
-    if diag_present and "diagnosis" in required_fields:
-        present_count += 1
-        
-    # 2. Medication History Check
-    med_present = bool(patient["medications"] and patient["medications"].lower() != "none")
-    checklist.append({
-        "field": "medication_history",
-        "label": "Medication History Present",
-        "status": med_present
-    })
-    if med_present and "medication_history" in required_fields:
-        present_count += 1
-        
-    # 3. Referral Check
-    ref_present = patient["referral_status"] == "Present"
-    checklist.append({
-        "field": "referral",
-        "label": "Referral Letter Present",
-        "status": ref_present
-    })
-    if ref_present and "referral" in required_fields:
-        present_count += 1
-        
-    # 4. Lab Report Check
-    lab_present = patient["lab_reports"] and patient["lab_reports"].lower() != "missing"
-    checklist.append({
-        "field": "lab_report",
-        "label": "Lab Report Present",
-        "status": lab_present
-    })
-    if lab_present and "lab_report" in required_fields:
-        present_count += 1
+    # 2. Run Extraction Agent
+    extracted_data = agents.run_extraction_agent(raw_notes)
+    # Ensure ID and treatment match DB state
+    extracted_data["patient_id"] = patient["patient_id"]
+    extracted_data["treatment_requested"] = req.treatment
+    extracted_data["insurance_plan"] = patient["insurance_plan"]
+    
+    # Adapt prior therapies based on DB medication history if empty
+    if not extracted_data.get("prior_therapies_tried"):
+        meds = patient["medications"].upper()
+        if "SNRI" in meds:
+            extracted_data["prior_therapies_tried"] = ["SSRI", "SNRI"]
+        elif "SSRI" in meds or "BENZODIAZEPINE" in meds:
+            extracted_data["prior_therapies_tried"] = [patient["medications"]]
+        else:
+            extracted_data["prior_therapies_tried"] = []
 
-    # Step Therapy Check
-    step_met = True
-    failed_count = 0
-    med_str = patient["medications"].upper()
-    if "SNRI" in med_str:
-        # SNRI implies they failed SSRI first
-        failed_count = 2
-    elif "SSRI" in med_str or "BENZODIAZEPINE" in med_str:
-        failed_count = 1
-    else:
-        failed_count = 0
+    # 3. Run Criteria-Matching Agent
+    validation_output = agents.run_criteria_matching_agent(extracted_data, rule)
+    
+    # 4. Map checklist items to UI format
+    checklist_mapped = []
+    present_count = 0
+    required_fields = ["diagnosis", "medication", "referral", "lab_report"]
+    
+    for item in validation_output.get("checklist", []):
+        field = item.get("field")
+        status_str = item.get("status", "missing")
+        note = item.get("note", "")
         
+        labels = {
+            "diagnosis": "Diagnosis Present",
+            "medication": "Medication History Present",
+            "referral": "Referral Letter Present",
+            "lab_report": "Lab Report Present"
+        }
+        label = labels.get(field, f"{field.capitalize()} Present")
+        if note:
+            label += f" ({note})"
+            
+        is_present = status_str == "present"
+        checklist_mapped.append({
+            "field": field,
+            "label": label,
+            "status": is_present
+        })
+        
+        if is_present and field in required_fields:
+            present_count += 1
+            
+    # Add step therapy to checklist if rule demands it
+    step_met = validation_output.get("step_therapy_met", False)
     if rule["step_therapy_required"]:
-        step_met = failed_count >= rule["min_failed_therapies"]
-        checklist.append({
+        checklist_mapped.append({
             "field": "step_therapy",
-            "label": f"Step Therapy Met ({failed_count}/{rule['min_failed_therapies']} failed therapies)",
+            "label": f"Step Therapy Met (Prior therapies: {', '.join(extracted_data.get('prior_therapies_tried', []))})",
             "status": step_met
         })
 
-    # Computed Readiness Score based only on required fields
-    total_required = len(required_fields)
-    readiness_score = int((present_count / total_required) * 100) if total_required > 0 else 100
+    # Computed Readiness Score based only on the 4 required fields
+    readiness_score = int((present_count / len(required_fields)) * 100)
     
     return {
         "treatment": req.treatment,
-        "checklist": checklist,
-        "readiness_score": readiness_score,
-        "failed_therapies_count": failed_count,
-        "step_therapy_met": step_met
+        "patient_data": extracted_data,
+        "validation_results": {
+            "checklist": checklist_mapped,
+            "readiness_score": readiness_score,
+            "step_therapy_met": step_met,
+            "overall_confidence": validation_output.get("overall_confidence", 100),
+            "escalate_to_human": validation_output.get("escalate_to_human", False),
+            "escalation_reason": validation_output.get("escalation_reason", "")
+        }
     }
 
 @app.post("/api/patients/{id}/generate-letter")
 def generate_letter(id: int, req: LetterRequest):
-    """Call Gemini to generate the PA letter and suggested next steps."""
+    """Call specialized agents to generate PA letter, next steps, and run case audit."""
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM patients WHERE id = ?", (id,))
@@ -243,172 +256,37 @@ def generate_letter(id: int, req: LetterRequest):
         raise HTTPException(status_code=404, detail="Patient not found")
         
     patient = dict(patient)
-    api_key = os.environ.get("GEMINI_API_KEY")
     
-    # Formulate context variables for Gemini
+    # 1. Run Letter-Generation Agent
+    letter_text = agents.run_letter_generation_agent(req.patient_data, req.validation_results)
+    
+    # 2. Extract missing fields from checklist for Suggested-Next-Steps Agent
     checklist = req.validation_results.get("checklist", [])
-    missing_docs = [item["label"] for item in checklist if not item["status"]]
-    present_docs = [item["label"] for item in checklist if item["status"]]
+    missing_fields = [item["label"] for item in checklist if not item["status"]]
     
-    prompt_letter = f"""
-    You are a clinical administrative assistant drafting a formal Prior Authorization (PA) letter for a healthcare provider.
-    Write a formal prior authorization request letter to the payer requesting approval for the treatment: "{req.treatment}".
+    # 3. Run Suggested-Next-Steps Agent
+    next_steps_output = agents.run_next_steps_agent(missing_fields, req.treatment)
+    next_steps_list = next_steps_output.get("next_steps", [])
     
-    Patient Details:
-    - Name: {patient['name']}
-    - Age: {patient['age']}
-    - Insurance Plan: {patient['insurance_plan']}
-    - Diagnosis Details: {patient['diagnosis']}
-    - Current/Past Medications: {patient['medications']}
-    - Referral Document: {patient['referral_status']}
-    - Lab Report: {patient['lab_reports']}
+    # 4. Run Escalation / Audit Agent
+    audit_trail_data = agents.run_audit_agent(req.patient_data, req.validation_results, letter_text)
     
-    Validation Results Context:
-    - Present Documents: {', '.join(present_docs) if present_docs else 'None'}
-    - Missing Documents: {', '.join(missing_docs) if missing_docs else 'None'}
-    - Readiness Score: {req.validation_results.get('readiness_score')}%
-    - Step Therapy requirement met: {req.validation_results.get('step_therapy_met')} ({req.validation_results.get('failed_therapies_count')} failed therapies documented)
-    
-    Your letter MUST include:
-    1. Header with today's date, patient name, patient ID, and insurance plan.
-    2. Executive Summary requesting authorization for "{req.treatment}".
-    3. Clinical Summary detailing the diagnosis, severity (Y-BOCS scores if applicable), and symptom history.
-    4. Medical Necessity Argument: Justify why this therapy is needed. Mention the medication history (Step Therapy context). If the step therapy requirement is not fully met, explain the clinical rationale or urge expedited review.
-    5. An explicit "Supporting Documentation" section. In this section, list the documents that are enclosed (Present Documents) and explicitly note any documents that are currently missing but are being expedited/requested (Missing Documents).
-    6. Formal closing from the healthcare provider.
-    
-    Write the letter in clear, formal, clinical prose. Use professional markdown formatting.
-    """
-
-    prompt_next_steps = f"""
-    Based on the following missing items for patient {patient['name']}'s prior authorization check for "{req.treatment}",
-    generate exactly 2 to 3 concrete, actionable next steps for the clinical coordinator to gather the missing documents.
-    
-    Missing items list:
-    {', '.join(missing_docs) if missing_docs else 'None (All required documentation present)'}
-    
-    Format the output as a simple JSON array of strings, for example:
-    [
-      "Request referral letter from primary care physician",
-      "Attach most recent lab panel dated within 90 days"
-    ]
-    Do not return any markdown code blocks or wrapper text, just the raw JSON array.
-    """
-
-    letter_text = ""
-    next_steps_list = []
-
-    if api_key:
-        try:
-            # We can use either the new google-genai client or import google.generativeai
-            # Let's import the client inside to handle any import issues dynamically
-            from google import genai
-            client = genai.Client(api_key=api_key)
-            
-            # Generate Letter
-            response_letter = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt_letter,
-            )
-            letter_text = response_letter.text
-            
-            # Generate Next Steps
-            response_steps = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt_next_steps,
-            )
-            steps_content = response_steps.text.strip()
-            
-            # Clean JSON if wrapped in markdown blocks
-            if steps_content.startswith("```"):
-                lines = steps_content.split("\n")
-                if lines[0].startswith("```json") or lines[0].startswith("```"):
-                    lines = lines[1:-1]
-                steps_content = "\n".join(lines).strip()
-                
-            next_steps_list = json.loads(steps_content)
-        except Exception as e:
-            # Fallback to mock generator if API call fails
-            letter_text = f"""### PRIOR AUTHORIZATION REQUEST (DEMO FALLBACK - API Error)
-**Date:** August 7, 2026  
-**Patient Name:** {patient['name']}  
-**Patient ID:** {patient['patient_id']}  
-**Insurance Plan:** {patient['insurance_plan']}  
-**Requested Treatment:** {req.treatment}  
-
-Dear Medical Director,
-
-We are writing to request a Prior Authorization for **{req.treatment}** for our patient, **{patient['name']}**, age {patient['age']}, who presents with:
-* **Diagnosis:** {patient['diagnosis']}
-* **Medication History:** {patient['medications']}
-
-**Medical Necessity:**
-The patient has tried and failed relevant therapies. The requested treatment is medically necessary to manage OCD symptoms and prevent further clinical deterioration.
-
-**Supporting Documentation:**
-* Enclosed: {', '.join(present_docs) if present_docs else 'None'}
-* Missing/Pending: {', '.join(missing_docs) if missing_docs else 'None'}
-
-Please contact our clinic for any further information.
-
-Sincerely,  
-CareGate Clinical Team
-*(Note: This letter was generated via demo fallback due to an API exception: {str(e)})*"""
-            
-            # Generate static next steps
-            next_steps_list = []
-            for item in missing_docs:
-                next_steps_list.append(f"Obtain and verify clinical records for: {item}")
-            if not next_steps_list:
-                next_steps_list.append("Verify all clinical records are signed and dated by the provider.")
-    else:
-        # Fallback if API key is not configured
-        letter_text = f"""### PRIOR AUTHORIZATION REQUEST (DEMO FALLBACK - No API Key)
-**Date:** August 7, 2026  
-**Patient Name:** {patient['name']}  
-**Patient ID:** {patient['patient_id']}  
-**Insurance Plan:** {patient['insurance_plan']}  
-**Requested Treatment:** {req.treatment}  
-
-Dear Medical Director,
-
-We are writing to request a Prior Authorization for **{req.treatment}** for our patient, **{patient['name']}**, who presents with **{patient['diagnosis']}**.
-
-**Clinical History & Step Therapy:**
-* Current medications: {patient['medications']}
-* Documented failed therapies: {req.validation_results.get('failed_therapies_count')}
-
-**Supporting Documentation:**
-* Present: {', '.join(present_docs) if present_docs else 'None'}
-* Missing/Pending: {', '.join(missing_docs) if missing_docs else 'None'}
-
-Please approve this authorization or contact our clinic with any questions.
-
-Sincerely,  
-CareGate Clinical Team
-*(Note: Please configure a valid GEMINI_API_KEY in the .env file to enable real AI generation.)*"""
-        
-        next_steps_list = []
-        for item in missing_docs:
-            next_steps_list.append(f"Acquire missing documentation for: {item}")
-        if not next_steps_list:
-            next_steps_list.append("Review complete file and submit to insurer portal.")
-
-    # Save request history
+    # Save request history to SQLite database (including audit_trail)
     try:
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO requests (patient_id, patient_name, treatment, readiness_score, validation_results, letter_text, next_steps)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO requests (patient_id, patient_name, treatment, readiness_score, validation_results, letter_text, next_steps, audit_trail)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             patient['patient_id'],
             patient['name'],
             req.treatment,
-            req.validation_results.get("readiness_score"),
+            req.validation_results.get("readiness_score", 0),
             json.dumps(req.validation_results),
             letter_text,
-            json.dumps(next_steps_list)
+            json.dumps(next_steps_list),
+            json.dumps(audit_trail_data)
         ))
         conn.commit()
         conn.close()
@@ -417,12 +295,13 @@ CareGate Clinical Team
         
     return {
         "letter": letter_text,
-        "next_steps": next_steps_list
+        "next_steps": next_steps_list,
+        "audit_trail": audit_trail_data
     }
 
 @app.get("/api/requests")
 def list_requests():
-    """Retrieve previously generated requests."""
+    """Retrieve previously generated requests with audit trails."""
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM requests ORDER BY id DESC")
@@ -434,5 +313,9 @@ def list_requests():
         d = dict(r)
         d["validation_results"] = json.loads(d["validation_results"])
         d["next_steps"] = json.loads(d["next_steps"])
+        if d.get("audit_trail"):
+            d["audit_trail"] = json.loads(d["audit_trail"])
+        else:
+            d["audit_trail"] = None
         requests.append(d)
     return requests
